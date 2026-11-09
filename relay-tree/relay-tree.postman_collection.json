@@ -1,0 +1,156 @@
+{
+  "info": {
+    "_postman_id": "b20a9982-20db-49af-a2bf-e1f8a6e77352",
+    "name": "Relay Tree - JavaScript",
+    "description": "HTTP requests for creating and inspecting the JavaScript relay tree and publishing messages. Create a tree before publishing or subscribing to the WebSocket endpoint at ws://localhost:8080/ws.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create or replace tree",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"depth\": 4\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/tree/create",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "tree",
+            "create"
+          ]
+        },
+        "description": "Create or replace a binary relay tree. Depth must be an integer from 0 to 10. Returns the tree depth, root ID, relay and leaf counts, topology, and relay details."
+      },
+      "response": []
+    },
+    {
+      "name": "Get tree",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/tree",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "tree"
+          ]
+        },
+        "description": "Get the current tree, including its depth, root relay ID, relay and leaf counts, topology, and relay details. Returns 404 if a tree has not been created."
+      },
+      "response": []
+    },
+    {
+      "name": "Get all relays",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/tree/relays",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "tree",
+            "relays"
+          ]
+        },
+        "description": "List all relays with their IDs, levels, parent and child IDs, and connected client counts."
+      },
+      "response": []
+    },
+    {
+      "name": "Get leaves",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/tree/leaves",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "tree",
+            "leaves"
+          ]
+        },
+        "description": "List the leaf relays and their connected client counts."
+      },
+      "response": []
+    },
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Check that the server is responding. Returns status \"ok\" and includes current tree details when a tree exists."
+      },
+      "response": []
+    },
+    {
+      "name": "Publish message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "text/plain"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "Hello from JavaScript",
+          "options": {
+            "raw": {
+              "language": "text"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/publish",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "publish"
+          ]
+        },
+        "description": "Publish a non-empty text message to connected WebSocket clients. Requires a tree to have been created first. Returns 202 when accepted."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ]
+}

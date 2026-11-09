@@ -1,0 +1,49 @@
+{
+  "info": {
+    "_postman_id": "4636f953-233d-440a-8a77-1a0d23342b72",
+    "name": "Connection Gateway - JavaScript",
+    "description": "HTTP request for creating a channel in the Connection Gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create channel",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"channelId\": \"stream-101\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/channels",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "channels"
+          ]
+        },
+        "description": "Create a channel before subscribing. Expected response: 201 Created with {\"status\":\"created\",\"channelId\":\"stream-101\"}. Channel IDs must be unique."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ]
+}
