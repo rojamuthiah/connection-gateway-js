@@ -6,6 +6,7 @@ const { performance } = require("node:perf_hooks");
 const express = require("express");
 const WebSocket = require("ws");
 const ChannelManager = require("./channelManager");
+const Logger = require("./logger");
 
 const DEFAULT_PORT = 8080;
 const DEFAULT_CPU_WORK_MS = 250;
@@ -51,11 +52,17 @@ function sendError(socket, message) {
 }
 
 function createServer({
-    port = readIntegerSetting(process.env.PORT, DEFAULT_PORT, "PORT", 0, 65535),
+    port = readIntegerSetting(
+        process.env.CONNECTION_GATEWAY_PORT,
+        DEFAULT_PORT,
+        "CONNECTION_GATEWAY_PORT",
+        0,
+        65535
+    ),
     cpuWorkMs = readIntegerSetting(
-        process.env.CPU_WORK_MS,
+        process.env.CONNECTION_GATEWAY_BAD_WORK_MS,
         DEFAULT_CPU_WORK_MS,
-        "CPU_WORK_MS",
+        "CONNECTION_GATEWAY_BAD_WORK_MS",
         1,
         MAX_CPU_WORK_MS
     )
@@ -67,6 +74,26 @@ function createServer({
         path: "/ws"
     });
     const channelManager = new ChannelManager();
+    const logger = new Logger();
+
+    server.once("close", () => {
+        logger.close();
+    });
+
+    app.use((req, res, next) => {
+        const startedAt = performance.now();
+
+        res.once("finish", () => {
+            logger.info("http_request", {
+                method: req.method,
+                path: req.path,
+                statusCode: res.statusCode,
+                durationMs: Math.round(performance.now() - startedAt)
+            });
+        });
+
+        next();
+    });
 
     app.use(express.json({ limit: "64kb" }));
 
@@ -80,11 +107,16 @@ function createServer({
         }
 
         if (!channelManager.createChannel(channelId)) {
+            logger.warn("channel_creation_rejected", {
+                channelId,
+                reason: "already_exists"
+            });
             return res.status(409).json({
                 error: "channel already exists"
             });
         }
 
+        logger.info("channel_created", { channelId });
         return res.status(201).json({
             status: "created",
             channelId
@@ -93,9 +125,14 @@ function createServer({
 
     websocketServer.on("connection", socket => {
         const connectionId = channelManager.addConnection(socket);
+        logger.info("websocket_connected", { connectionId });
 
         socket.on("message", (data, isBinary) => {
             if (isBinary) {
+                logger.warn("websocket_message_rejected", {
+                    connectionId,
+                    reason: "binary_message"
+                });
                 sendError(socket, "Only JSON text messages are supported");
                 return;
             }
@@ -104,27 +141,45 @@ function createServer({
             try {
                 request = JSON.parse(data.toString());
             } catch {
+                logger.warn("websocket_message_rejected", {
+                    connectionId,
+                    reason: "invalid_json"
+                });
                 sendError(socket, "Message must contain valid JSON");
                 return;
             }
 
             if (!request || typeof request !== "object" || Array.isArray(request)) {
+                logger.warn("websocket_message_rejected", {
+                    connectionId,
+                    reason: "message_not_object"
+                });
                 sendError(socket, "Message must be a JSON object");
                 return;
             }
 
             const { type, channelId } = request;
             if (typeof channelId !== "string" || channelId.trim().length === 0) {
+                logger.warn("websocket_message_rejected", {
+                    connectionId,
+                    reason: "invalid_channel_id"
+                });
                 sendError(socket, "channelId must be a non-empty string");
                 return;
             }
 
             if (type === "subscribe") {
                 if (!channelManager.subscribe(connectionId, channelId)) {
+                    logger.warn("subscription_rejected", {
+                        connectionId,
+                        channelId,
+                        reason: "channel_not_found"
+                    });
                     sendError(socket, "Channel does not exist");
                     return;
                 }
 
+                logger.info("connection_subscribed", { connectionId, channelId });
                 sendJson(socket, {
                     type: "subscribed",
                     channelId,
@@ -134,16 +189,33 @@ function createServer({
             }
 
             if (type !== "publish_normal" && type !== "publish_bad") {
+                logger.warn("websocket_message_rejected", {
+                    connectionId,
+                    channelId,
+                    reason: "unsupported_type"
+                });
                 sendError(socket, "type must be subscribe, publish_normal, or publish_bad");
                 return;
             }
 
             if (!channelManager.isSubscribed(connectionId, channelId)) {
+                logger.warn("publish_rejected", {
+                    connectionId,
+                    channelId,
+                    type,
+                    reason: "not_subscribed"
+                });
                 sendError(socket, "Subscribe to the channel before publishing");
                 return;
             }
 
             if (typeof request.message !== "string" || request.message.length === 0) {
+                logger.warn("publish_rejected", {
+                    connectionId,
+                    channelId,
+                    type,
+                    reason: "invalid_message"
+                });
                 sendError(socket, "message must be a non-empty string");
                 return;
             }
@@ -155,12 +227,36 @@ function createServer({
                 );
 
                 if (!selectedConnectionId) {
+                    logger.warn("publish_rejected", {
+                        connectionId,
+                        channelId,
+                        type,
+                        reason: "no_other_subscribers"
+                    });
                     sendError(socket, "No other subscribers are available for bad-message work");
                     return;
                 }
 
+                logger.info("bad_work_started", {
+                    connectionId,
+                    channelId,
+                    selectedSubscriberId: selectedConnectionId,
+                    durationMs: cpuWorkMs
+                });
                 // Select a recipient for the benchmark, but execute on Node's shared event loop.
                 runCpuWork(cpuWorkMs);
+                logger.info("bad_work_completed", {
+                    connectionId,
+                    channelId,
+                    selectedSubscriberId: selectedConnectionId,
+                    durationMs: cpuWorkMs
+                });
+            } else {
+                logger.info("message_published", {
+                    connectionId,
+                    channelId,
+                    type
+                });
             }
 
             channelManager.broadcast(channelId, {
@@ -172,20 +268,27 @@ function createServer({
 
         socket.on("close", () => {
             channelManager.removeConnection(connectionId);
+            logger.info("websocket_disconnected", { connectionId });
         });
 
         socket.on("error", error => {
             console.error(`WebSocket error for ${connectionId}:`, error);
+            logger.error("websocket_error", {
+                connectionId,
+                message: error.message
+            });
         });
     });
 
-    return { app, server, websocketServer, channelManager, port };
+    return { app, server, websocketServer, channelManager, logger, port };
 }
 
 if (require.main === module) {
     const gateway = createServer();
     gateway.server.listen(gateway.port, () => {
-        console.log(`Connection Gateway listening on port ${gateway.server.address().port}`);
+        const listeningPort = gateway.server.address().port;
+        console.log(`Connection Gateway listening on port ${listeningPort}`);
+        gateway.logger.info("server_started", { port: listeningPort });
     });
 }
 
