@@ -15,7 +15,7 @@ through the tree. This app is separate from the `connection-gateway` benchmark.
 Clone the repository and enter the Relay Tree app:
 
 ```powershell
-git clone https://github.com/rojamuthiah/connection-gateway-js.git
+git clone --branch main --single-branch https://github.com/rojamuthiah/connection-gateway-js.git
 cd connection-gateway-js\relay-tree
 npm ci
 Copy-Item .env.example .env
